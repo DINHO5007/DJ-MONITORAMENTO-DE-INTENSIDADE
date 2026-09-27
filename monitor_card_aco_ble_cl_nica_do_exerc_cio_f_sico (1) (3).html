@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clínica do Exercício Físico - Monitor Cardíaco</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .zone-repouso { background-color: #64748b; }
+        .zone-aquecimento { background-color: #2563eb; }
+        .zone-leve { background-color: #16a34a; }
+        .zone-moderado { background-color: #eab308; }
+        .zone-intenso { background-color: #c2410c; }
+        .zone-maximo { background-color: #991b1b; }
+        @media print {
+            body { background-color: #0f172a !important; color: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- CABEÇALHO COM LOGOMARCA INTERATIVA (SELEÇÃO DA GALERIA DO CELULAR) -->
+    <header class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex flex-wrap justify-between items-center shadow-md gap-4 no-print">
+        <div class="flex items-center space-x-3">
+            <label for="logoFileInput" class="cursor-pointer group relative flex items-center justify-center bg-slate-900 hover:bg-slate-700 border border-slate-700 rounded-xl px-3 py-1.5 transition shadow" title="Clique para escolher a logomarca do celular">
+                <div id="headerLogoContainer" class="flex items-center justify-center h-8 min-w-[32px]">
+                    <span id="logoPlaceholderText" class="text-xs text-blue-400 font-semibold flex items-center gap-1.5">
+                        <span>📁</span> <span id="logoLabelText">Logo Clínica</span>
+                    </span>
+                </div>
+                <input type="file" id="logoFileInput" accept="image/*" onchange="handleLogoUpload(this)" class="hidden">
+            </label>
+        </div>
+        <nav class="flex space-x-1 sm:space-x-3 text-sm">
+            <button onclick="switchTab('sessions')" id="nav-sessions" class="px-3 py-1.5 rounded-lg font-medium bg-blue-600 text-white transition">Sessões</button>
+            <button onclick="switchTab('participants')" id="nav-participants" class="px-3 py-1.5 rounded-lg font-medium text-slate-300 hover:bg-slate-700 transition">Alunos</button>
+            <button onclick="switchTab('live')" id="nav-live" class="px-3 py-1.5 rounded-lg font-medium text-slate-300 hover:bg-slate-700 transition">Ao Vivo</button>
+            <button onclick="switchTab('reports')" id="nav-reports" class="px-3 py-1.5 rounded-lg font-medium text-slate-300 hover:bg-slate-700 transition">Relatórios</button>
+        </nav>
+    </header>
+
+    <!-- CONTEÚDO PRINCIPAL -->
+    <main class="flex-1 p-4 max-w-6xl mx-auto w-full">
+
+        <!-- ABA SESSÕES -->
+        <section id="tab-sessions" class="space-y-6">
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                <h2 class="text-xl font-semibold mb-4 text-blue-400">Gerenciar Sessão de Treino</h2>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input type="text" id="sessionNameInput" placeholder="Nome da Sessão (Ex: Avaliação / Treino Funcional)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500">
+                    <button onclick="startNewSession()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-medium shadow transition">Iniciar Nova Sessão</button>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                <h2 class="text-lg font-semibold mb-3 text-slate-200">Sessões Ativas / Histórico Local</h2>
+                <div id="sessionsList" class="space-y-3">
+                    <p class="text-slate-400 text-sm">Nenhuma sessão registrada.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ABA PARTICIPANTES / ALUNOS -->
+        <section id="tab-participants" class="hidden space-y-6">
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                <h2 class="text-xl font-semibold mb-4 text-blue-400">Cadastrar Novo Aluno</h2>
+                <form id="participantForm" onsubmit="saveParticipant(event)" class="space-y-4">
+                    <input type="hidden" id="editParticipantId">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Nome *</label>
+                            <input type="text" id="pName" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Idade</label>
+                            <input type="number" id="pAge" oninput="calcTanakaHR()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">FC Máx (Tanaka / Editável)</label>
+                            <input type="number" id="pMaxHR" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="208 - 0.7 * idade">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Sexo</label>
+                            <select id="pGender" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                                <option value="male">Masculino</option>
+                                <option value="female">Feminino</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Peso (kg)</label>
+                            <input type="number" step="0.1" id="pWeight" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">FC Repouso (bpm)</label>
+                            <input type="number" id="pRestHR" value="60" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- CAMPO DE FOTO DO ALUNO -->
+                    <div class="pt-2">
+                        <label class="block text-xs text-slate-400 mb-2">Foto de Perfil</label>
+                        <div class="flex items-center gap-4">
+                            <div id="photoPreviewContainer" class="w-16 h-16 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden text-2xl text-slate-500">
+                                ?
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                <input type="file" id="pImageFile" accept="image/*" onchange="previewImage(this)" class="text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500">
+                                <span class="text-[11px] text-slate-500">JPG/PNG recomendado</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" onclick="resetParticipantForm()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm transition">Cancelar</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-sm font-medium shadow transition">Salvar Aluno</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                <h2 class="text-lg font-semibold mb-3 text-slate-200">Alunos Cadastrados</h2>
+                <div id="participantsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    <!-- Preenchido via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ABA AO VIVO (FOCO APENAS EM TRIMP E BPM) -->
+        <section id="tab-live" class="hidden space-y-6">
+            <div id="noActiveSessionAlert" class="bg-amber-900/40 border border-amber-600/50 p-4 rounded-2xl text-amber-200 text-sm">
+                Nenhuma sessão ativa no momento. Vá na aba <b>Sessões</b> e inicie uma para monitorar.
+            </div>
+
+            <div id="liveContent" class="hidden space-y-4">
+                <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex flex-wrap items-center justify-between gap-4 shadow-lg">
+                    <div>
+                        <span class="text-xs text-slate-400 block">Sessão Atual</span>
+                        <h2 id="activeSessionTitle" class="text-xl font-bold text-blue-400">—</h2>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="activeTimer" class="font-mono text-lg bg-slate-900 px-3 py-1 rounded-xl border border-slate-700 text-emerald-400">00:00:00</span>
+                        <button onclick="connectAllSensors()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-medium shadow transition flex items-center gap-2">
+                            <span>🔗</span> Conectar Todas
+                        </button>
+                        <button onclick="openAddParticipantModal()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-medium shadow transition">
+                            + Adicionar
+                        </button>
+                        <button onclick="endActiveSession()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-xl text-sm font-medium shadow transition">
+                            Encerrar
+                        </button>
+                    </div>
+                </div>
+
+                <div id="liveGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Cartões dinâmicos com TRIMP -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ABA RELATÓRIOS (EXATAMENTE COMO NA TELA DO CELULAR SOLICITADA) -->
+        <section id="tab-reports" class="hidden space-y-6">
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-blue-400">Relatórios Detalhados e Gráficos</h2>
+                </div>
+                <div id="reportsList" class="space-y-6">
+                    <p class="text-slate-400 text-sm">Nenhum relatório gerado ainda.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL SELECIONAR ALUNO -->
+    <div id="participantModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl">
+            <h3 class="text-lg font-semibold text-white">Selecionar Aluno para o Treino</h3>
+            <div id="modalParticipantsList" class="max-h-60 overflow-y-auto space-y-2 pr-1">
+                <!-- Lista de alunos -->
+            </div>
+            <div class="flex justify-end pt-2">
+                <button onclick="closeAddParticipantModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm transition">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let appData = {
+            participants: JSON.parse(localStorage.getItem('ce_participants') || '[]'),
+            sessions: JSON.parse(localStorage.getItem('ce_sessions') || '[]'),
+            activeSession: JSON.parse(localStorage.getItem('ce_activeSession') || 'null'),
+            clinicLogo: localStorage.getItem('ce_clinicLogo') || null
+        };
+
+        let liveConnections = {}; 
+        let sessionTimerInterval = null;
+        let base64ImageTemp = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderParticipants();
+            renderSessions();
+            applyClinicLogo();
+            if (appData.activeSession) {
+                document.getElementById('nav-live').click();
+                resumeLiveSessionUI();
+            }
+        });
+
+        function saveData() {
+            localStorage.setItem('ce_participants', JSON.stringify(appData.participants));
+            localStorage.setItem('ce_sessions', JSON.stringify(appData.sessions));
+            localStorage.setItem('ce_activeSession', JSON.stringify(appData.activeSession));
+            if(appData.clinicLogo) localStorage.setItem('ce_clinicLogo', appData.clinicLogo);
+        }
+
+        function switchTab(tabId) {
+            ['sessions', 'participants', 'live', 'reports'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`nav-${t}`).className = "px-3 py-1.5 rounded-lg font-medium text-slate-300 hover:bg-slate-700 transition";
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            document.getElementById(`nav-${tabId}`).className = "px-3 py-1.5 rounded-lg font-medium bg-blue-600 text-white transition";
+
+            if (tabId === 'reports') renderReports();
+        }
+
+        function handleLogoUpload(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    appData.clinicLogo = e.target.result;
+                    saveData();
+                    applyClinicLogo();
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function applyClinicLogo() {
+            const container = document.getElementById('headerLogoContainer');
+            if (appData.clinicLogo) {
+                container.innerHTML = `<img src="${appData.clinicLogo}" alt="Logo" class="h-8 object-contain rounded">`;
+            } else {
+                container.innerHTML = `<span class="text-xs text-blue-400 font-semibold flex items-center gap-1.5"><span>📁</span> <span>Adicionar Logo</span></span>`;
+            }
+        }
+
+        function previewImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    base64ImageTemp = e.target.result;
+                    document.getElementById('photoPreviewContainer').innerHTML = `<img src="${base64ImageTemp}" class="w-full h-full object-cover">`;
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function calcTanakaHR() {
+            const age = parseInt(document.getElementById('pAge').value);
+            if (!isNaN(age) && age > 0) {
+                const maxHR = Math.round(208 - (0.7 * age));
+                document.getElementById('pMaxHR').value = maxHR;
+            }
+        }
+
+        function saveParticipant(e) {
+            e.preventDefault();
+            const id = document.getElementById('editParticipantId').value || 'p_' + Date.now();
+            const name = document.getElementById('pName').value;
+            const age = parseInt(document.getElementById('pAge').value) || 30;
+            const maxHR = parseInt(document.getElementById('pMaxHR').value) || Math.round(208 - (0.7 * age));
+            const gender = document.getElementById('pGender').value;
+            const weight = parseFloat(document.getElementById('pWeight').value) || 70;
+            const restHR = parseInt(document.getElementById('pRestHR').value) || 60;
+            const photo = base64ImageTemp || (appData.participants.find(p => p.id === id)?.photo) || null;
+
+            const participant = { id, name, age, maxHR, gender, weight, restHR, photo };
+            
+            const index = appData.participants.findIndex(p => p.id === id);
+            if (index >= 0) {
+                appData.participants[index] = participant;
+            } else {
+                appData.participants.push(participant);
+            }
+
+            saveData();
+            renderParticipants();
+            resetParticipantForm();
+        }
+
+        function resetParticipantForm() {
+            document.getElementById('participantForm').reset();
+            document.getElementById('editParticipantId').value = '';
+            base64ImageTemp = null;
+            document.getElementById('photoPreviewContainer').innerHTML = '?';
+        }
+
+        function renderParticipants() {
+            const container = document.getElementById('participantsList');
+            if (appData.participants.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 text-sm col-span-full">Nenhum aluno cadastrado.</p>`;
+                return;
+            }
+            container.innerHTML = appData.participants.map(p => `
+                <div class="bg-slate-900 border border-slate-700 p-4 rounded-2xl flex items-center justify-between shadow">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center text-slate-400 font-bold">
+                            ${p.photo ? `<img src="${p.photo}" class="w-full h-full object-cover">` : p.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-white">${p.name}</h3>
+                            <p class="text-xs text-slate-400">${p.age} anos · ${p.weight} kg · FCmáx: ${p.maxHR} bpm</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="editParticipant('${p.id}')" class="text-blue-400 hover:text-blue-300 p-1 text-xs">✏️</button>
+                        <button onclick="deleteParticipant('${p.id}')" class="text-red-400 hover:text-red-300 p-1 text-xs">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function editParticipant(id) {
+            const p = appData.participants.find(item => item.id === id);
+            if (!p) return;
+            document.getElementById('editParticipantId').value = p.id;
+            document.getElementById('pName').value = p.name;
+            document.getElementById('pAge').value = p.age;
+            document.getElementById('pMaxHR').value = p.maxHR;
+            document.getElementById('pGender').value = p.gender;
+            document.getElementById('pWeight').value = p.weight;
+            document.getElementById('pRestHR').value = p.restHR;
+            base64ImageTemp = p.photo;
+            if (p.photo) {
+                document.getElementById('photoPreviewContainer').innerHTML = `<img src="${p.photo}" class="w-full h-full object-cover">`;
+            } else {
+                document.getElementById('photoPreviewContainer').innerHTML = '?';
+            }
+            switchTab('participants');
+        }
+
+        function deleteParticipant(id) {
+            if (confirm('Deseja excluir este aluno?')) {
+                appData.participants = appData.participants.filter(p => p.id !== id);
+                saveData();
+                renderParticipants();
+            }
+        }
+
+        function startNewSession() {
+            const nameInput = document.getElementById('sessionNameInput');
+            const name = nameInput.value.trim() || `Treino ${new Date().toLocaleDateString('pt-BR')}`;
+            
+            appData.activeSession = {
+                id: 'sess_' + Date.now(),
+                name: name,
+                startTime: Date.now(),
+                durationSeconds: 0,
+                participants: [] 
+            };
+
+            saveData();
+            nameInput.value = '';
+            switchTab('live');
+            resumeLiveSessionUI();
+        }
+
+        function renderSessions() {
+            const container = document.getElementById('sessionsList');
+            if (appData.sessions.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 text-sm">Nenhuma sessão anterior encontrada.</p>`;
+                return;
+            }
+            container.innerHTML = appData.sessions.map(s => `
+                <div class="bg-slate-900 border border-slate-700 p-4 rounded-xl flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-white">${s.name}</h3>
+                        <p class="text-xs text-slate-400">${new Date(s.startTime).toLocaleString('pt-BR')} · ${s.participants.length} alunos</p>
+                    </div>
+                    <button onclick="viewReport('${s.id}')" class="bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 px-3 py-1.5 rounded-lg text-xs font-medium transition">Ver Relatório</button>
+                </div>
+            `).join('');
+        }
+
+        function resumeLiveSessionUI() {
+            if (!appData.activeSession) return;
+            document.getElementById('noActiveSessionAlert').classList.add('hidden');
+            document.getElementById('liveContent').classList.remove('hidden');
+            document.getElementById('activeSessionTitle').innerText = appData.activeSession.name;
+
+            startSessionTimer();
+            renderLiveGrid();
+        }
+
+        function startSessionTimer() {
+            if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+            sessionTimerInterval = setInterval(() => {
+                if (!appData.activeSession) return;
+                const elapsed = Math.floor((Date.now() - appData.activeSession.startTime) / 1000);
+                appData.activeSession.durationSeconds = elapsed;
+                
+                const hrs = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+                const mins = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+                const secs = String(elapsed % 60).padStart(2, '0');
+                const timerEl = document.getElementById('activeTimer');
+                if(timerEl) timerEl.innerText = `${hrs}:${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function endActiveSession() {
+            if (!confirm('Deseja realmente encerrar a sessão e gerar o relatório?')) return;
+            if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+
+            Object.values(liveConnections).forEach(conn => {
+                if (conn.device && conn.device.gatt.connected) conn.device.gatt.disconnect();
+            });
+            liveConnections = {};
+
+            appData.sessions.unshift(appData.activeSession);
+            appData.activeSession = null;
+            saveData();
+
+            document.getElementById('liveContent').classList.add('hidden');
+            document.getElementById('noActiveSessionAlert').classList.remove('hidden');
+            
+            renderSessions();
+            switchTab('reports');
+        }
+
+        function openAddParticipantModal() {
+            const container = document.getElementById('modalParticipantsList');
+            const activeIds = appData.activeSession.participants.map(p => p.participantId);
+            const available = appData.participants.filter(p => !activeIds.includes(p.id));
+
+            if (available.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 text-sm py-4 text-center">Todos os alunos já estão adicionados na sessão.</p>`;
+            } else {
+                container.innerHTML = available.map(p => `
+                    <div onclick="addParticipantToLive('${p.id}')" class="bg-slate-900 hover:bg-slate-700/60 border border-slate-700 p-3 rounded-xl flex items-center justify-between cursor-pointer transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center text-slate-400 font-bold">
+                                ${p.photo ? `<img src="${p.photo}" class="w-full h-full object-cover">` : p.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span class="font-medium text-white">${p.name}</span>
+                        </div>
+                        <span class="text-blue-400 text-sm font-semibold">+ Adicionar</span>
+                    </div>
+                `).join('');
+            }
+            document.getElementById('participantModal').classList.remove('hidden');
+            document.getElementById('participantModal').classList.add('flex');
+        }
+
+        function closeAddParticipantModal() {
+            document.getElementById('participantModal').classList.remove('flex');
+            document.getElementById('participantModal').classList.add('hidden');
+        }
+
+        function addParticipantToLive(participantId) {
+            appData.activeSession.participants.push({
+                participantId,
+                readings: [],
+                zonesTime: { repouso: 0, aquecimento: 0, leve: 0, moderado: 0, intenso: 0, maximo: 0 },
+                zonesTrimpEdwards: { repouso: 0, aquecimento: 0, leve: 0, moderado: 0, intenso: 0, maximo: 0 }
+            });
+            saveData();
+            closeAddParticipantModal();
+            renderLiveGrid();
+        }
+
+        function removeParticipantFromLive(participantId) {
+            if (liveConnections[participantId]) {
+                if (liveConnections[participantId].device.gatt.connected) {
+                    liveConnections[participantId].device.gatt.disconnect();
+                }
+                delete liveConnections[participantId];
+            }
+            appData.activeSession.participants = appData.activeSession.participants.filter(p => p.participantId !== participantId);
+            saveData();
+            renderLiveGrid();
+        }
+
+        function calculateCaloriesAndTrimp(readings, p) {
+            if (!readings || readings.length === 0) return { calories: 0, edwards: 0, banister: 0, edwardsZones: { repouso: 0, aquecimento: 0, leve: 0, moderado: 0, intenso: 0, maximo: 0 } };
+            
+            const hrRest = p.restHR || 60;
+            const hrMax = p.maxHR || 180;
+            const weight = p.weight || 70;
+            const age = p.age || 30;
+            const isFemale = p.gender === 'female';
+            
+            let totalCalories = 0;
+            let totalBanister = 0;
+            let totalEdwards = 0;
+            let edwardsZones = { repouso: 0, aquecimento: 0, leve: 0, moderado: 0, intenso: 0, maximo: 0 };
+
+            readings.forEach(hr => {
+                let kcalMin = 0;
+                if (isFemale) {
+                    kcalMin = (-20.4022 + (0.4472 * hr) - (0.1263 * weight) + (0.074 * age)) / 4.184;
+                } else {
+                    kcalMin = (-55.0969 + (0.6309 * hr) + (0.1988 * weight) + (0.2017 * age)) / 4.184;
+                }
+                if (kcalMin < 0.015) kcalMin = 0.015; // Ajuste para repouso leve e preciso
+                totalCalories += (kcalMin / 60);
+
+                const pct = (hr / hrMax) * 100;
+                let edMultiplier = 0;
+                let zKey = 'repouso';
+                if (pct >= 50 && pct < 60) { edMultiplier = 1; zKey = 'repouso'; }
+                else if (pct >= 60 && pct < 70) { edMultiplier = 2; zKey = 'aquecimento'; }
+                else if (pct >= 70 && pct < 80) { edMultiplier = 3; zKey = 'leve'; }
+                else if (pct >= 80 && pct < 90) { edMultiplier = 4; zKey = 'moderado'; }
+                else if (pct >= 90 && pct <= 100) { edMultiplier = 5; zKey = 'intenso'; }
+                else if (pct > 100) { edMultiplier = 5; zKey = 'maximo'; }
+                
+                const instEdwards = (1 / 60) * edMultiplier;
+                totalEdwards += instEdwards;
+                edwardsZones[zKey] += instEdwards;
+
+                const ratio = Math.max(0, (hr - hrRest) / (hrMax - hrRest));
+                const factor = isFemale ? 0.86 : 0.64;
+                const instBanister = (1 / 60) * ratio * 0.64 * Math.exp(factor * ratio);
+                totalBanister += instBanister;
+            });
+
+            return {
+                calories: Math.round(totalCalories),
+                edwards: parseFloat(totalEdwards.toFixed(1)),
+                banister: parseFloat(totalBanister.toFixed(1)),
+                edwardsZones: {
+                    repouso: parseFloat(edwardsZones.repouso.toFixed(1)),
+                    aquecimento: parseFloat(edwardsZones.aquecimento.toFixed(1)),
+                    leve: parseFloat(edwardsZones.leve.toFixed(1)),
+                    moderado: parseFloat(edwardsZones.moderado.toFixed(1)),
+                    intenso: parseFloat(edwardsZones.intenso.toFixed(1)),
+                    maximo: parseFloat(edwardsZones.maximo.toFixed(1))
+                }
+            };
+        }
+
+        function renderLiveGrid() {
+            const grid = document.getElementById('liveGrid');
+            if (!appData.activeSession || appData.activeSession.participants.length === 0) {
+                grid.innerHTML = `<p class="text-slate-400 text-sm col-span-full">Nenhum participante adicionado nesta sessão. Clique em "+ Adicionar".</p>`;
+                return;
+            }
+
+            grid.innerHTML = appData.activeSession.participants.map(item => {
+                const p = appData.participants.find(x => x.id === item.participantId) || { name: 'Desconhecido', maxHR: 180, weight: 70, restHR: 60 };
+                const conn = liveConnections[item.participantId];
+                const isConnected = conn && conn.connected;
+                const bpm = conn ? conn.currentBpm : '--';
+                const percent = (typeof bpm === 'number') ? Math.round((bpm / p.maxHR) * 100) : 0;
+                
+                let zoneName = 'Aguardando';
+                let zoneClass = 'bg-slate-800';
+                if (typeof bpm === 'number') {
+                    if (percent < 60) { zoneName = 'Repouso (<60%)'; zoneClass = 'zone-repouso'; }
+                    else if (percent < 70) { zoneName = 'Aquecimento (60-70%)'; zoneClass = 'zone-aquecimento'; }
+                    else if (percent < 80) { zoneName = 'Leve (70-80%)'; zoneClass = 'zone-leve'; }
+                    else if (percent < 90) { zoneName = 'Moderado (80-90%)'; zoneClass = 'zone-moderado'; }
+                    else if (percent <= 100) { zoneName = 'Intenso (90-100%)'; zoneClass = 'zone-intenso'; }
+                    else { zoneName = 'Máximo (>100%)'; zoneClass = 'zone-maximo'; }
+                }
+
+                const metrics = calculateCaloriesAndTrimp(item.readings, p);
+
+                return `
+                    <div class="${isConnected ? zoneClass : 'bg-slate-800'} border border-slate-700 p-5 rounded-2xl shadow-xl transition-all duration-300 flex flex-col justify-between">
+                        <div class="flex justify-between items-start">
+                            <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-full bg-slate-900 border-2 border-white/20 overflow-hidden flex items-center justify-center font-bold text-base text-white shadow">
+                                    ${p.photo ? `<img src="${p.photo}" class="w-full h-full object-cover">` : p.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white text-lg">${p.name}</h3>
+                                    <p class="text-xs text-white/80">FC Máx: ${p.maxHR} bpm</p>
+                                </div>
+                            </div>
+                            <button onclick="removeParticipantFromLive('${p.id}')" class="text-white/60 hover:text-white text-xs bg-black/20 p-1.5 rounded-lg">✕</button>
+                        </div>
+
+                        <div class="my-4 text-center">
+                            <div class="text-5xl font-black text-white tracking-tight">${bpm} <span class="text-lg font-normal text-white/80">bpm</span></div>
+                            <div class="flex justify-center items-center gap-4 mt-2">
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-black/30 text-white">${zoneName}</span>
+                                <span class="text-sm font-bold text-white/90">${isConnected ? percent + '%' : '—'}</span>
+                            </div>
+                        </div>
+
+                        <!-- CALORIAS E TRIMP RESTAURADOS DE FORMA DESTACADA NO AO VIVO -->
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <div class="bg-black/20 p-2.5 rounded-xl text-center text-xs text-white/90">
+                                🔥 Calorias: <span class="font-bold text-sm text-amber-300 block">${metrics.calories} kcal</span>
+                            </div>
+                            <div class="bg-black/20 p-2.5 rounded-xl text-center text-xs text-white/90">
+                                ⚡ TRIMP: <span class="font-bold text-sm text-emerald-300 block">${metrics.edwards}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button onclick="connectSensor('${p.id}')" class="flex-1 bg-white/20 hover:bg-white/30 text-white py-2 rounded-xl text-xs font-medium backdrop-blur transition shadow">
+                                ${isConnected ? 'Reconectar' : 'Conectar Cinta'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function connectSensor(participantId) {
+            if (!navigator.bluetooth) {
+                alert('Web Bluetooth não suportado neste navegador. Utilize o Google Chrome.');
+                return;
+            }
+
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: ['heart_rate'] }]
+                });
+
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService('heart_rate');
+                const characteristic = await service.getCharacteristic('heart_rate_measurement');
+
+                liveConnections[participantId] = {
+                    device,
+                    connected: true,
+                    currentBpm: '--',
+                    deviceName: device.name || 'Cinta'
+                };
+
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = event.target.value;
+                    const flags = value.getUint8(0);
+                    let bpm;
+                    if ((flags & 0x01) === 0) {
+                        bpm = value.getUint8(1);
+                    } else {
+                        bpm = value.getUint16(1, true);
+                    }
+
+                    const conn = liveConnections[participantId];
+                    if (conn) {
+                        conn.currentBpm = bpm;
+                        
+                        if (appData.activeSession) {
+                            const pSession = appData.activeSession.participants.find(x => x.participantId === participantId);
+                            if (pSession) {
+                                pSession.readings.push(bpm);
+                                const p = appData.participants.find(x => x.id === participantId) || { maxHR: 180 };
+                                const maxHR = p.maxHR;
+                                const pct = (bpm / maxHR) * 100;
+
+                                if (pct < 60) pSession.zonesTime.repouso++;
+                                else if (pct < 70) pSession.zonesTime.aquecimento++;
+                                else if (pct < 80) pSession.zonesTime.leve++;
+                                else if (pct < 90) pSession.zonesTime.moderado++;
+                                else if (pct <= 100) pSession.zonesTime.intenso++;
+                                else pSession.zonesTime.maximo++;
+                            }
+                        }
+                    }
+                    renderLiveGrid();
+                });
+
+                device.addEventListener('gattserverdisconnected', () => {
+                    if (liveConnections[participantId]) {
+                        liveConnections[participantId].connected = false;
+                        liveConnections[participantId].currentBpm = 'Desconectado';
+                    }
+                    renderLiveGrid();
+                });
+
+                renderLiveGrid();
+            } catch (error) {
+                console.error('Erro na conexão Bluetooth:', error);
+            }
+        }
+
+        async function connectAllSensors() {
+            if (!appData.activeSession) return;
+            for (let item of appData.activeSession.participants) {
+                const conn = liveConnections[item.participantId];
+                if (!conn || !conn.connected) {
+                    await connectSensor(item.participantId);
+                }
+            }
+        }
+
+        function exportReportPDF(sessionId) {
+            window.print();
+        }
+
+        function renderReports() {
+            const container = document.getElementById('reportsList');
+            if (appData.sessions.length === 0) {
+                container.innerHTML = `<p class="text-slate-400 text-sm">Nenhum relatório disponível.</p>`;
+                return;
+            }
+
+            container.innerHTML = appData.sessions.map(s => {
+                const dateStr = new Date(s.startTime).toLocaleString('pt-BR');
+                const durationFormatted = new Date(s.durationSeconds * 1000).toISOString().substr(11, 8);
+
+                let participantsHtml = s.participants.map(item => {
+                    const p = appData.participants.find(x => x.id === item.participantId) || { name: 'Aluno', weight: 70, maxHR: 180, restHR: 60 };
+                    const readings = item.readings;
+                    const avgBpm = readings.length > 0 ? Math.round(readings.reduce((a,b)=>a+b,0)/readings.length) : 0;
+                    const maxBpm = readings.length > 0 ? Math.max(...readings) : 0;
+                    const minBpm = readings.length > 0 ? Math.min(...readings) : 0;
+                    const metrics = calculateCaloriesAndTrimp(readings, p);
+
+                    const totalZ = Object.values(item.zonesTime).reduce((a,b)=>a+b,0) || 1;
+                    const getZTime = (sec) => {
+                        const m = Math.floor(sec / 60);
+                        const sRest = sec % 60;
+                        return `${String(m).padStart(2,'0')}:${String(sRest).padStart(2,'0')}`;
+                    };
+
+                    return `
+                        <div class="bg-slate-900 border border-slate-700 p-5 rounded-2xl space-y-4 shadow-xl">
+                            <!-- CABEÇALHO DO ALUNO NO RELATÓRIO -->
+                            <div class="flex items-center gap-3">
+                                <div class="w-14 h-14 rounded-full bg-slate-800 border-2 border-slate-700 overflow-hidden flex items-center justify-center font-bold text-white text-lg shadow">
+                                    ${p.photo ? `<img src="${p.photo}" class="w-full h-full object-cover">` : p.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-white text-xl">${p.name}</h4>
+                                    <p class="text-xs text-slate-400">FC Máx: ${p.maxHR} bpm · Peso: ${p.weight} kg</p>
+                                </div>
+                            </div>
+
+                            <!-- CARDS DE MÉTRICAS EXATAMENTE COMO NA TELA DO CELULAR -->
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center">
+                                    <span class="text-xs text-slate-400 block mb-1">Duração</span>
+                                    <strong class="text-base font-bold text-white">${durationFormatted}</strong>
+                                </div>
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center">
+                                    <span class="text-xs text-slate-400 block mb-1">BPM médio</span>
+                                    <strong class="text-base font-bold text-white">${avgBpm}</strong>
+                                </div>
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center">
+                                    <span class="text-xs text-slate-400 block mb-1">BPM máx</span>
+                                    <strong class="text-base font-bold text-white">${maxBpm}</strong>
+                                </div>
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center">
+                                    <span class="text-xs text-slate-400 block mb-1">BPM mín</span>
+                                    <strong class="text-base font-bold text-white">${minBpm}</strong>
+                                </div>
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center">
+                                    <span class="text-xs text-slate-400 block mb-1">Calorias</span>
+                                    <strong class="text-base font-bold text-amber-400">${metrics.calories} kcal</strong>
+                                </div>
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center">
+                                    <span class="text-xs text-slate-400 block mb-1">TRIMP (Edwards)</span>
+                                    <strong class="text-base font-bold text-blue-400">${metrics.edwards}</strong>
+                                </div>
+                                <div class="bg-slate-800 p-3 rounded-2xl border border-slate-700/60 text-center col-span-full sm:col-span-3">
+                                    <span class="text-xs text-slate-400 block mb-1">TRIMP (Banister)</span>
+                                    <strong class="text-base font-bold text-emerald-400">${metrics.banister}</strong>
+                                </div>
+                            </div>
+
+                            <!-- TEMPO POR ZONA -->
+                            <div class="space-y-1.5 pt-2">
+                                <span class="text-xs font-medium text-slate-300 block">Tempo por zona</span>
+                                <div class="flex h-3 rounded-full overflow-hidden bg-slate-800 gap-0.5">
+                                    <div class="zone-repouso" style="width: ${(item.zonesTime.repouso/totalZ)*100}%" title="Repouso"></div>
+                                    <div class="zone-aquecimento" style="width: ${(item.zonesTime.aquecimento/totalZ)*100}%" title="Aquecimento"></div>
+                                    <div class="zone-leve" style="width: ${(item.zonesTime.leve/totalZ)*100}%" title="Leve"></div>
+                                    <div class="zone-moderado" style="width: ${(item.zonesTime.moderado/totalZ)*100}%" title="Moderado"></div>
+                                    <div class="zone-intenso" style="width: ${(item.zonesTime.intenso/totalZ)*100}%" title="Intenso"></div>
+                                    <div class="zone-maximo" style="width: ${(item.zonesTime.maximo/totalZ)*100}%" title="Máximo"></div>
+                                </div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-y-1 text-xs text-slate-400 pt-1">
+                                    <span>Repouso ${getZTime(item.zonesTime.repouso)}</span>
+                                    <span>Aquecimento ${getZTime(item.zonesTime.aquecimento)}</span>
+                                    <span>Leve ${getZTime(item.zonesTime.leve)}</span>
+                                    <span>Moderado ${getZTime(item.zonesTime.moderado)}</span>
+                                    <span>Intenso ${getZTime(item.zonesTime.intenso)}</span>
+                                    <span>Máximo ${getZTime(item.zonesTime.maximo)}</span>
+                                </div>
+                            </div>
+
+                            <!-- CARGA (TRIMP) POR ZONA -->
+                            <div class="space-y-1.5 pt-2">
+                                <span class="text-xs font-medium text-slate-300 block">Carga (TRIMP Edwards) por zona</span>
+                                <div class="flex h-3 rounded-full overflow-hidden bg-slate-800 gap-0.5">
+                                    <div class="zone-repouso" style="width: ${(metrics.edwards > 0 ? (metrics.edwardsZones.repouso/metrics.edwards)*100 : 0)}%"></div>
+                                    <div class="zone-aquecimento" style="width: ${(metrics.edwards > 0 ? (metrics.edwardsZones.aquecimento/metrics.edwards)*100 : 0)}%"></div>
+                                    <div class="zone-leve" style="width: ${(metrics.edwards > 0 ? (metrics.edwardsZones.leve/metrics.edwards)*100 : 0)}%"></div>
+                                    <div class="zone-moderado" style="width: ${(metrics.edwards > 0 ? (metrics.edwardsZones.moderado/metrics.edwards)*100 : 0)}%"></div>
+                                    <div class="zone-intenso" style="width: ${(metrics.edwards > 0 ? (metrics.edwardsZones.intenso/metrics.edwards)*100 : 0)}%"></div>
+                                    <div class="zone-maximo" style="width: ${(metrics.edwards > 0 ? (metrics.edwardsZones.maximo/metrics.edwards)*100 : 0)}%"></div>
+                                </div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-y-1 text-xs text-slate-400 pt-1">
+                                    <span>Repouso ${metrics.edwardsZones.repouso}</span>
+                                    <span>Aquecimento ${metrics.edwardsZones.aquecimento}</span>
+                                    <span>Leve ${metrics.edwardsZones.leve}</span>
+                                    <span>Moderado ${metrics.edwardsZones.moderado}</span>
+                                    <span>Intenso ${metrics.edwardsZones.intenso}</span>
+                                    <span>Máximo ${metrics.edwardsZones.maximo}</span>
+                                </div>
+                            </div>
+
+                            <!-- GRÁFICO DE BPM AO LONGO DO TEMPO -->
+                            <div class="space-y-2 pt-2">
+                                <span class="text-xs font-medium text-slate-300 block">BPM ao longo do tempo</span>
+                                <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800 h-44 relative flex items-end shadow-inner">
+                                    <svg class="w-full h-full overflow-visible" viewBox="0 0 300 100" preserveAspectRatio="none">
+                                        <!-- Linhas de grade horizontais -->
+                                        <line x1="0" y1="20" x2="300" y2="20" stroke="#991b1b" stroke-width="0.5" stroke-dasharray="2" />
+                                        <line x1="0" y1="40" x2="300" y2="40" stroke="#c2410c" stroke-width="0.5" stroke-dasharray="2" />
+                                        <line x1="0" y1="60" x2="300" y2="60" stroke="#eab308" stroke-width="0.5" stroke-dasharray="2" />
+                                        <line x1="0" y1="80" x2="300" y2="80" stroke="#16a34a" stroke-width="0.5" stroke-dasharray="2" />
+                                        ${(() => {
+                                            if (!readings || readings.length === 0) return '';
+                                            const minV = Math.min(...readings, 50);
+                                            const maxV = Math.max(...readings, p.maxHR);
+                                            const pts = readings.map((val, idx) => {
+                                                const x = (idx / (readings.length - 1 || 1)) * 300;
+                                                const y = 100 - ((val - minV) / (maxV - minV || 1)) * 90;
+                                                return `${x},${isNaN(y) ? 50 : y}`;
+                                            }).join(' ');
+                                            return `<polyline fill="none" stroke="#38bdf8" stroke-width="2.5" points="${pts}" />`;
+                                        })()}
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="bg-slate-800 border border-slate-700 p-5 rounded-2xl space-y-4 shadow-xl">
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-3 flex-wrap gap-2">
+                            <div>
+                                <h3 class="font-bold text-xl text-white">${s.name}</h3>
+                                <p class="text-xs text-slate-400">${dateStr} · ${s.participants.length} participantes</p>
+                            </div>
+                            <div class="flex gap-2 no-print">
+                                <button onclick="exportReportPDF('${s.id}')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-medium transition shadow flex items-center gap-1.5">
+                                    <span>📄</span> Imprimir / PDF
+                                </button>
+                                <button onclick="deleteSession('${s.id}')" class="text-red-400 hover:text-red-300 text-xs bg-slate-900 px-3 py-2 rounded-xl border border-slate-700">Excluir</button>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            ${participantsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function viewReport(sessionId) {
+            switchTab('reports');
+        }
+
+        function deleteSession(id) {
+            if (confirm('Deseja excluir este relatório/sessão?')) {
+                appData.sessions = appData.sessions.filter(s => s.id !== id);
+                saveData();
+                renderReports();
+                renderSessions();
+            }
+        }
+    </script>
+</body>
+</html>
