@@ -16,6 +16,9 @@
             body { background-color: #0f172a !important; color: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .no-print { display: none !important; }
         }
+        /* Dificulta cópia casual do conteúdo (não é proteção real contra alguém técnico) */
+        body { -webkit-user-select: none; user-select: none; }
+        input, textarea, select { -webkit-user-select: text; user-select: text; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
@@ -52,6 +55,7 @@
             <button onclick="switchTab('live')" id="nav-live" class="px-3 py-1.5 rounded-lg font-medium text-slate-300 hover:bg-slate-700 transition">Ao Vivo</button>
             <button onclick="switchTab('reports')" id="nav-reports" class="px-3 py-1.5 rounded-lg font-medium text-slate-300 hover:bg-slate-700 transition">Relatórios</button>
             <span class="hidden sm:inline text-slate-500 text-xs pl-2 border-l border-slate-700">Olá, <span id="loggedUserName" class="text-slate-300 font-medium"></span></span>
+            <button id="adminBtn" onclick="openAdmin()" class="hidden text-xs text-blue-400 hover:text-blue-300 px-2 border border-slate-700 rounded-lg py-1">Gerenciar senhas</button>
             <button onclick="logout()" class="text-xs text-slate-400 hover:text-red-400 px-2">Sair</button>
         </nav>
     </header>
@@ -201,42 +205,142 @@
         </div>
     </div>
 
+    <!-- PAINEL DE GERENCIAR SENHAS (só aparece para admin) -->
+    <div id="adminModal" class="hidden fixed inset-0 bg-black/70 items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-white">Gerenciar senhas de acesso</h3>
+                <button onclick="closeAdmin()" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+            </div>
+            <div class="flex gap-2">
+                <input type="text" id="newAccessName" placeholder="Nome da pessoa" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') addAccess()">
+                <button onclick="addAccess()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition">Adicionar</button>
+            </div>
+            <p class="text-xs text-slate-500">A senha dessa pessoa será o próprio nome digitado acima (não diferencia maiúsculas/minúsculas).</p>
+            <div id="adminList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+            <div class="pt-2 border-t border-slate-700 space-y-2">
+                <button onclick="downloadUpdatedApp()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl text-sm font-medium transition">Baixar arquivo atualizado (index.html)</button>
+                <p class="text-xs text-slate-500">Depois de baixar, suba esse arquivo no lugar do antigo no GitHub para que as novas senhas valham para todo mundo.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- fim appRoot -->
     </div>
 
     <script>
-        const ACCESS_CODES = {
-            // Edite esta lista para adicionar, trocar ou remover senhas de acesso.
-            // Formato: "senha": "Nome da pessoa"
-            "1234": "Josivaldo",
-            "5678": "Estagiário",
-            "9012": "Convidado"
+        // ---- Barreiras contra cópia casual (não impedem acesso técnico ao código-fonte) ----
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('keydown', e => {
+            const k = e.key.toUpperCase();
+            const blockCombo = (e.ctrlKey || e.metaKey) && (k === 'U' || k === 'S' || (e.shiftKey && ['I','J','C'].includes(k)));
+            if (k === 'F12' || blockCombo) e.preventDefault();
+        });
+
+        /* ACCESS_CODES_START */
+        let ACCESS_CODES = {
+            // Cada senha = o nome da pessoa. "admin:true" dá acesso ao painel de gerenciar senhas.
+            "Josivaldo": { name: "Josivaldo", admin: true }
         };
+        /* ACCESS_CODES_END */
+
+        try{
+            const saved = localStorage.getItem('ce_accessCodesOverride');
+            if(saved) ACCESS_CODES = JSON.parse(saved);
+        }catch(e){}
+
+        let currentUser = null;
+
+        function findMatch(val){
+            const key = Object.keys(ACCESS_CODES).find(k => k.toLowerCase() === val.toLowerCase());
+            return key ? ACCESS_CODES[key] : null;
+        }
 
         function checkLogin(){
             const val = document.getElementById('loginPassword').value.trim();
             const errorEl = document.getElementById('loginError');
-            if(ACCESS_CODES[val]){
+            const match = findMatch(val);
+            if(match){
                 errorEl.classList.add('hidden');
-                try{ localStorage.setItem('ce_authUser', ACCESS_CODES[val]); }catch(e){}
-                showApp(ACCESS_CODES[val]);
+                try{ localStorage.setItem('ce_authUser', JSON.stringify(match)); }catch(e){}
+                showApp(match);
             } else {
                 errorEl.classList.remove('hidden');
             }
         }
 
-        function showApp(name){
+        function showApp(user){
+            currentUser = user;
             document.getElementById('loginGate').style.display = 'none';
             const root = document.getElementById('appRoot');
             root.classList.remove('hidden');
             root.classList.add('flex');
             const nameEl = document.getElementById('loggedUserName');
-            if(nameEl) nameEl.textContent = name;
+            if(nameEl) nameEl.textContent = user.name;
+            const adminBtn = document.getElementById('adminBtn');
+            if(adminBtn) adminBtn.classList.toggle('hidden', !user.admin);
         }
 
         function logout(){
             try{ localStorage.removeItem('ce_authUser'); }catch(e){}
             location.reload();
+        }
+
+        // ---- Painel de administração de senhas ----
+        function openAdmin(){
+            renderAdminList();
+            document.getElementById('adminModal').classList.remove('hidden');
+            document.getElementById('adminModal').classList.add('flex');
+        }
+        function closeAdmin(){
+            document.getElementById('adminModal').classList.add('hidden');
+            document.getElementById('adminModal').classList.remove('flex');
+        }
+        function renderAdminList(){
+            const list = document.getElementById('adminList');
+            list.innerHTML = Object.keys(ACCESS_CODES).map(pwd => {
+                const u = ACCESS_CODES[pwd];
+                return `<div class="flex justify-between items-center bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+                    <span class="text-sm text-white">${u.name}${u.admin ? ' <span class=\"text-xs text-blue-400\">(admin)</span>' : ''}</span>
+                    <button onclick="removeAccess('${pwd.replace(/'/g,"\\'")}')" class="text-red-400 hover:text-red-300 text-xs">Remover</button>
+                </div>`;
+            }).join('') || '<p class="text-slate-500 text-xs">Nenhuma senha cadastrada.</p>';
+        }
+        function addAccess(){
+            const nameInput = document.getElementById('newAccessName');
+            const name = nameInput.value.trim();
+            if(!name){ return; }
+            ACCESS_CODES[name] = { name: name, admin: false };
+            nameInput.value = '';
+            renderAdminList();
+        }
+        function removeAccess(pwd){
+            delete ACCESS_CODES[pwd];
+            renderAdminList();
+        }
+        async function downloadUpdatedApp(){
+            try{
+                const res = await fetch(location.href, { cache: 'no-store' });
+                let html = await res.text();
+                const startMarker = '/* ACCESS_CODES_START */';
+                const endMarker = '/* ACCESS_CODES_END */';
+                const startIdx = html.indexOf(startMarker);
+                const endIdx = html.indexOf(endMarker);
+                if(startIdx === -1 || endIdx === -1){
+                    alert('Não foi possível localizar o bloco de senhas no arquivo original.');
+                    return;
+                }
+                const newBlock = `${startMarker}\n        let ACCESS_CODES = ${JSON.stringify(ACCESS_CODES, null, 12).replace(/\n/g,'\n        ')};\n        `;
+                html = html.slice(0, startIdx) + newBlock + html.slice(endIdx);
+                const blob = new Blob([html], { type: 'text/html' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'index.html';
+                a.click();
+                try{ localStorage.setItem('ce_accessCodesOverride', JSON.stringify(ACCESS_CODES)); }catch(e){}
+            }catch(e){
+                alert('Erro ao gerar o arquivo: ' + e.message);
+            }
         }
 
         let appData = {
@@ -252,7 +356,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             let savedUser = null;
-            try{ savedUser = localStorage.getItem('ce_authUser'); }catch(e){}
+            try{ savedUser = JSON.parse(localStorage.getItem('ce_authUser')); }catch(e){}
             if(savedUser){ showApp(savedUser); }
             renderParticipants();
             renderSessions();
